@@ -30,7 +30,14 @@ public class Tracker extends Thread {
 	 */
 	public void stopTracking() {
 		stop = true;
-		executorService.shutdownNow();
+		executorService.shutdown();
+		try {
+			if (!executorService.awaitTermination(TimeUnit.MINUTES.toMillis(15), TimeUnit.MILLISECONDS)) {
+				executorService.shutdownNow();
+			}
+		} catch (InterruptedException e) {
+			executorService.shutdownNow();
+		}
 	}
 	
 	@Override
@@ -45,7 +52,7 @@ public class Tracker extends Thread {
 			List<User> users = tourGuideService.getAllUsers();
 			logger.debug("Begin Tracker. Tracking " + users.size() + " users.");
 			stopWatch.start();
-			users.forEach(u -> tourGuideService.trackUserLocation(u));
+			tourGuideService.trackUserLocationWithThread(users);
 			stopWatch.stop();
 			logger.debug("Tracker Time Elapsed: " + TimeUnit.MILLISECONDS.toSeconds(stopWatch.getTime()) + " seconds."); 
 			stopWatch.reset();

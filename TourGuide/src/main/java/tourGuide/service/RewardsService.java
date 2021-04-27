@@ -1,8 +1,9 @@
 package tourGuide.service;
 
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.*;
 
 import org.springframework.stereotype.Service;
 
@@ -24,7 +25,8 @@ public class RewardsService {
 	private int attractionProximityRange = 200;
 	private final GpsUtil gpsUtil;
 	private final RewardCentral rewardsCentral;
-	
+	private final ExecutorService executorService = Executors.newFixedThreadPool(1000);
+
 	public RewardsService(GpsUtil gpsUtil, RewardCentral rewardCentral) {
 		this.gpsUtil = gpsUtil;
 		this.rewardsCentral = rewardCentral;
@@ -38,7 +40,7 @@ public class RewardsService {
 		proximityBuffer = defaultProximityBuffer;
 	}
 	
-	public void calculateRewards(User user) {
+	public Void calculateRewards(User user) {
 		CopyOnWriteArrayList<VisitedLocation> userLocations = new CopyOnWriteArrayList<>(user.getVisitedLocations());
 		CopyOnWriteArrayList<Attraction> attractions = new CopyOnWriteArrayList<>(gpsUtil.getAttractions());
 		
@@ -51,6 +53,21 @@ public class RewardsService {
 				}
 			}
 		}
+		return null;
+	}
+
+	public void calculateRewardsWithThread(List<User> users){
+		List<Callable<Void>> tasks = new ArrayList<>();
+		for (User user: users) {
+			tasks.add(() -> calculateRewards(user));
+		}
+
+		try {
+			List<Future<Void>> futures = executorService.invokeAll(tasks);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+
 	}
 	
 	public boolean isWithinAttractionProximity(Attraction attraction, Location location) {

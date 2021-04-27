@@ -2,6 +2,8 @@ package tourGuide.service;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -34,12 +36,13 @@ public class TourGuideService {
 	private final RewardsService rewardsService;
 	private final TripPricer tripPricer = new TripPricer();
 	public final Tracker tracker;
+	private final ExecutorService executorService = Executors.newFixedThreadPool(1000);
 	boolean testMode = true;
-	
+
 	public TourGuideService(GpsUtil gpsUtil, RewardsService rewardsService) {
 		this.gpsUtil = gpsUtil;
 		this.rewardsService = rewardsService;
-		
+
 		if(testMode) {
 			logger.info("TestMode enabled");
 			logger.debug("Initializing users");
@@ -49,45 +52,62 @@ public class TourGuideService {
 		tracker = new Tracker(this);
 		addShutDownHook();
 	}
-	
+
 	public List<UserReward> getUserRewards(User user) {
 		return user.getUserRewards();
 	}
-	
+
 	public VisitedLocation getUserLocation(User user) {
 		VisitedLocation visitedLocation = (user.getVisitedLocations().size() > 0) ?
 			user.getLastVisitedLocation() :
 			trackUserLocation(user);
 		return visitedLocation;
 	}
-	
+
 	public User getUser(String userName) {
 		return internalUserMap.get(userName);
 	}
-	
+
 	public List<User> getAllUsers() {
 		return internalUserMap.values().stream().collect(Collectors.toList());
 	}
-	
+
 	public void addUser(User user) {
 		if(!internalUserMap.containsKey(user.getUserName())) {
 			internalUserMap.put(user.getUserName(), user);
 		}
 	}
-	
+
 	public List<Provider> getTripDeals(User user) {
 		int cumulatativeRewardPoints = user.getUserRewards().stream().mapToInt(i -> i.getRewardPoints()).sum();
-		List<Provider> providers = tripPricer.getPrice(tripPricerApiKey, user.getUserId(), user.getUserPreferences().getNumberOfAdults(), 
+		List<Provider> providers = tripPricer.getPrice(tripPricerApiKey, user.getUserId(), user.getUserPreferences().getNumberOfAdults(),
 				user.getUserPreferences().getNumberOfChildren(), user.getUserPreferences().getTripDuration(), cumulatativeRewardPoints);
 		user.setTripDeals(providers);
 		return providers;
 	}
-	
+
 	public VisitedLocation trackUserLocation(User user) {
 		VisitedLocation visitedLocation = gpsUtil.getUserLocation(user.getUserId());
 		user.addToVisitedLocations(visitedLocation);
 		rewardsService.calculateRewards(user);
 		return visitedLocation;
+	}
+
+	public List<VisitedLocation> trackUserLocationWithThread (List<User> users){
+		List<Callable<VisitedLocation>> tasks = new ArrayList<>();
+		List<VisitedLocation> visitedLocations = new ArrayList<>();
+		for (User user: users){
+			tasks.add(()-> trackUserLocation(user));
+		}
+		try {
+			List<Future<VisitedLocation>> futures = executorService.invokeAll(tasks);
+			for (Future<VisitedLocation> future : futures){
+				visitedLocations.add(future.get());
+			}
+		} catch (InterruptedException | ExecutionException e) {
+			e.printStackTrace();
+		}
+		return visitedLocations;
 	}
 
 	public List<Attraction> getNearByAttractions(VisitedLocation visitedLocation) {
