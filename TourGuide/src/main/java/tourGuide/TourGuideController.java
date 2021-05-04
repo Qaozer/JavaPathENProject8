@@ -63,7 +63,7 @@ public class TourGuideController {
     	//        ...
     	//     }
     	
-    	return JsonStream.serialize("");
+    	return JsonStream.serialize(tourGuideService.getAllCurrentLocation());
     }
     
     @RequestMapping("/getTripDeals")

@@ -9,12 +9,16 @@ import java.util.stream.IntStream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import gpsUtil.GpsUtil;
 import gpsUtil.location.Attraction;
 import gpsUtil.location.Location;
 import gpsUtil.location.VisitedLocation;
+import rewardCentral.RewardCentral;
+import tourGuide.AttractionsInfo;
+import tourGuide.NearbyAttractionsInfo;
 import tourGuide.helper.InternalTestHelper;
 import tourGuide.tracker.Tracker;
 import tourGuide.user.User;
@@ -31,11 +35,12 @@ public class TourGuideService {
 	public final Tracker tracker;
 	private final ExecutorService executorService = Executors.newFixedThreadPool(1000);
 	boolean testMode = true;
-	
+	private final RewardCentral rewardCentral = new RewardCentral();
+
 	public TourGuideService(GpsUtil gpsUtil, RewardsService rewardsService) {
 		this.gpsUtil = gpsUtil;
 		this.rewardsService = rewardsService;
-		
+
 		if(testMode) {
 			logger.info("TestMode enabled");
 			logger.debug("Initializing users");
@@ -103,24 +108,54 @@ public class TourGuideService {
 		return visitedLocations;
 	}
 
-	public List<Attraction> getNearByAttractions(VisitedLocation visitedLocation) {
-		List<Attraction> nearbyAttractions = new ArrayList<>();
+	public Void getCurrentLocation(User user, Map<UUID,Location> map){
+		map.put(user.getUserId(), user.getLastVisitedLocation().location);
+		return null;
+	}
+
+	public Map<UUID, Location> getAllCurrentLocation(){
+		List<User> users = getAllUsers();
+		Map<UUID, Location> userLocations = new HashMap<>();
+
+		List<Callable<Void>> tasks = new ArrayList<>();
+		for (User user: users
+			 ) {
+			tasks.add(() -> getCurrentLocation(user, userLocations));
+		}
+
+		try {
+			List<Future<Void>> futures = executorService.invokeAll(tasks);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		return userLocations;
+	}
+
+	public NearbyAttractionsInfo getNearByAttractions(VisitedLocation visitedLocation) {
+		NearbyAttractionsInfo nearbyAttractionsInfo = new NearbyAttractionsInfo();
+		nearbyAttractionsInfo.setUserLocation(visitedLocation.location);
+
+		List<AttractionsInfo> attractionsInfoList = new ArrayList<>();
+
 		Map<Double, Attraction> attractionsDistance = new HashMap<>();
 
 		for(Attraction attraction : gpsUtil.getAttractions()) {
 			attractionsDistance.put(rewardsService.getDistance(attraction, visitedLocation.location), attraction );
 		}
 
-		TreeMap<Double, Attraction> sortedAttractions = new TreeMap<>(attractionsDistance);
-		Iterator<Map.Entry<Double,Attraction>> itr = sortedAttractions.entrySet().iterator();
+		List<Map.Entry<Double, Attraction>> sorted = attractionsDistance.entrySet().stream().sorted(Map.Entry.comparingByKey()).collect(Collectors.toList());
 
-		for (int i = 0; i < 5; i++) {
-			if (itr.hasNext()){
-				nearbyAttractions.add(itr.next().getValue());
-			}
+		for (int i = 0; i < 5 && i < sorted.size(); i++) {
+			Attraction attraction = sorted.get(i).getValue();
+			AttractionsInfo attractionsInfo = new AttractionsInfo(attraction.attractionName,
+					attraction.longitude, attraction.latitude, sorted.get(i).getKey(),
+					rewardCentral.getAttractionRewardPoints(attraction.attractionId,visitedLocation.userId));
+			attractionsInfoList.add(attractionsInfo);
 		}
+
+		nearbyAttractionsInfo.setAttractionsInfoList(attractionsInfoList);
 		
-		return nearbyAttractions;
+		return nearbyAttractionsInfo;
 	}
 	
 	private void addShutDownHook() {
