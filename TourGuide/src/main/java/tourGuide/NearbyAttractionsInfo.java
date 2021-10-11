@@ -1,6 +1,6 @@
 package tourGuide;
 
-import gpsUtil.location.Location;
+import tourGuide.domain.gpsUtil.Location;
 
 import java.util.List;
 

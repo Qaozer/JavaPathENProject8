@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+    TourGuide:
+        image: openjdk:18
+        ports:
+            - 8080:8080
+        stdin_open: true
+        tty: true
+    TripPricer:
+        image: openjdk:18
+        ports:
+            - 8081:8081
+        stdin_open: true
+        tty: true
+    GpsUtils:
+        image: openjdk:18
+        ports:
+            - 8083:8083
+        stdin_open: true
+        tty: true
+    RewardCentral:
+        image: openjdk:18
+        ports:
+            - 8082:8082
+        stdin_open: true
+        tty: true
+networks:
+    default:
+        name: network
